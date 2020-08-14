@@ -11,7 +11,6 @@ import fire
 #_PATH = os.path.dirname(os.path.realpath(__file__)) + "/db/" + dbname
 ABI_PATH = os.path.dirname(os.path.realpath(__file__)) + "/abi/"
 
-contractaddress = "0xbfaC3e6913306C8ED630079832C17C97bCEDB8a3"
 btcrelayabifilename = 'BTCRelay.json'
 
 
