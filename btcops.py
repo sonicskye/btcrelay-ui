@@ -12,6 +12,7 @@ def header_hash(header_hex):
     # Reverse inputs before and after hashing
     # due to big-endian / little-endian nonsense
     #a1 = binascii.unhexlify(header_hex)[::-1]
+    #print(header_hex)
     a1 = binascii.unhexlify(header_hex)
     # double sha256 of a1
     #h = hashlib.sha256(hashlib.sha256(a1).digest()).digest()
