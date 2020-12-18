@@ -11,10 +11,10 @@ import fire
 from btcops import header_hash
 import binascii
 from vars import blockchain_com_api_key as api_key, \
-    BTCRelayContractAddress as contract_address, BTCRelayContractABI as contract_abi, \
-    HelperContractAddress as helper_contract_address, HelperContractABI as helper_contract_abi
+    BTCRelayContractAddress as contract_address, BTCRelayContractABI as contract_abi
 from ethrpcops import getblocknumber, callfunctionsc, executefunctionsc, callfunctionsckwargs
-from eth_utils import to_hex
+from btcmerkle import merkle, merkleproof, merkledepth, prove, depth
+from eth_utils import to_hex, to_bytes
 
 
 
@@ -81,27 +81,59 @@ def extract_rawblockheader_from_rawblock(rawblock):
     return rawblockheader
 
 
-# serializing block header data
-# https://en.bitcoin.it/wiki/Block_hashing_algorithm
-# version 4 bytes
-# hashPrevBlock 32 bytes
-# hashMerkleRoot 32 bytes
-# time 4 bytes
-# bits 4 bytes
-# nonce 4 bytes
-def serialize_header(version, hash_prev_block, hash_merkle_root, time, bits, nonce):
-    # Reverse inputs before and after hashing
-    # due to big-endian / little-endian nonsense
-    #ver_format = binascii.unhexlify(version)[::-1]
-    pass
-
-
 def extract_rawblockheader(height):
     #data = '00000020aa7483d896e00427196905408d75d5aa05c7b584e584470000000000000000003268f5aa4821f80eacc7b8ff77eebee70b7d1262b46adbf579af2464029bae8f68cd845af8e96117b2d95c65'
     rawblock = get_block_by_height(height, 'hex', api_key)
     rawblockheader = extract_rawblockheader_from_rawblock(rawblock)
     return rawblockheader
     #print(header_hash(rawblockheader))
+
+
+def extract_txs(height):
+    rawblock = get_block_by_height(height, 'json', api_key)
+    txids = []
+    for tx in rawblock['tx']:
+        txid = tx['hash']
+        txids.append(txid)
+    return txids
+
+
+def extract_merkleroot(height):
+    rawblock = get_block_by_height(height, 'json', api_key)
+    return rawblock['mrkl_root']
+
+
+def genmerkleproof(height, txhash):
+    txs = extract_txs(height)
+    #print(txs)
+    srcmerkleroot = extract_merkleroot(height)
+    computedmerkleroot = merkle(txs)
+    if (srcmerkleroot == computedmerkleroot):
+        txidx = txs.index(txhash)
+        merkleproofdata = merkleproof(txs, txhash)
+        depthdata = depth(len(txs))
+        if prove(computedmerkleroot, merkleproofdata, txhash, txidx, depthdata):
+            return merkleproofdata
+        else:
+            return False
+    else:
+        return False
+
+
+def genmerkleproof_relay(height, txhash):
+    txs = extract_txs(height)
+    data = []
+    data.append(txhash)
+    if len(txs) > 1:
+        merkleproofdata = genmerkleproof(height, txhash)
+        srcmerkleroot = extract_merkleroot(height)
+        data.extend(merkleproofdata)
+        data.append(srcmerkleroot)
+    datastr = ''
+    datasize = len(data)
+    for d in data:
+        datastr = datastr + d
+    return int(datastr, 16).to_bytes(datasize * 32, byteorder='big')
 
 
 def gethighestblock(provider, contractaddress, contractabi):
@@ -162,6 +194,9 @@ def relayblockheaders(dstProvider, fromHeight=0, blockToRelay=100):
         #print(rawblockheader)
         blockHash = header_hash(rawblockheader)
         functionname = 'submitMainChainHeader'
+        #print(rawblockheader)
+        #print(int(rawblockheader, 16).to_bytes(80, byteorder='big'))
+        #print(to_bytes(rawblockheader))
         functionargs = {'blockHeaderBytes': int(rawblockheader, 16).to_bytes(80, byteorder='big')}
         #accountaddress = '0x2C716851591990278F3F419E0fabBa7AF2f8FE0E'
         #accountprivatekey = 'f594cf7b1b07aa6a5f5b10346b63d934c9501878bf6ca18a2d84ecf05d058918'
@@ -174,6 +209,26 @@ def relayblockheaders(dstProvider, fromHeight=0, blockToRelay=100):
             print('Block number ' + str(i) + ' (' + str(blockHash) + ') ' + ': ' + str(tx))
         else:
             print('Relay block ' + str(i) + ' failed.')
+
+
+def verifyTx(dstProvider, height, txhash):
+    receiptmode = False
+    merkleproofdataformatted = genmerkleproof_relay(height, txhash)
+    txs = extract_txs(height)
+    txidx = txs.index(txhash)
+    minconfirmation = 1
+    # print(blockHash)
+    # function verifxTX(bytes32 txid, uint256 txBlockHeight, uint256 txIndex, bytes memory merkleProof, uint256 confirmations) public returns(bool)
+    functionname = 'verifxTX'
+    functionargs = {'txid':txhash, 'txBlockHeight': height, 'txIndex':txidx, 'merkleProof':merkleproofdataformatted, 'confirmations':minconfirmation}
+    accountaddress = ''
+    accountprivatekey = ''
+    tx = executefunctionsc(receiptmode, dstProvider, accountaddress, accountprivatekey, contract_address,
+                           contract_abi, functionname, **functionargs)
+    if tx:
+        print('Transaction ' + txhash + ' is verified through transaction ' + ': ' + str(tx))
+    else:
+        print('Verification failed.')
 
 
 ######################################################

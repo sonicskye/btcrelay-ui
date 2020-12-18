@@ -1,9 +1,11 @@
 # btcrelay-ui
-Python-based Interface to communicate with BTCRelay Ethereum smart contract
+Python-based Interface to communicate with BTCRelay Ethereum smart contract.
+The relayer relies on Bitcoin.com's API. Original idea from [Consensys fetchd](https://github.com/ConsenSys/btcrelay-fetchd).
 
 ## Requirements
 - [BTCRelay-sol](https://github.com/sonicskye/btcrelay-sol)
 - Python3
+- web3py
 - virtualenv
 - all packages in requirements.txt
 
